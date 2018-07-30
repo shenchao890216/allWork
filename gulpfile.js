@@ -9,7 +9,7 @@ const gulpImageMin = require('gulp-imagemin')
 const runSequence = require('run-sequence')
 const fancyLog = require('fancy-log')
 const removingRequireStatement = require('./source/gulp/lib/removingRequireStatement')
-const requiring = require('./source/gulp/lib/requiring')
+const nestingModified = require('./source/gulp/lib/nestingModified')
 const through2 = require('through2')
 const md5 = require('md5')
 const path = require('path')
@@ -26,7 +26,7 @@ const CONFIG = {
 
 /* 任务 - scripts. */
 gulp.task('scripts', function () {
-  return createScripts(CONFIG.srcScriptsPath + '/!(_)**/!(_)*.js', CONFIG.destScriptsPath)
+  return createScripts(CONFIG.srcScriptsPath + '/!(_)**/!(_)*.js', CONFIG.destScriptsPath, false, '')
 })
 
 /* 任务 - scss. */
@@ -36,7 +36,7 @@ gulp.task('scss', function () {
 
 /* 任务 - images. */
 gulp.task('images', function () {
-  // pass(暂未想好，暂时放在原public位置).
+  // pass.
   return gulp.src(CONFIG.srcImagesPath + '/**/*')
     .pipe(gulpImageMin())
     .pipe(gulp.dest(CONFIG.destImagesPath))
@@ -50,14 +50,19 @@ gulp.task('build', function (callback) {
 /* 任务 - default. */
 gulp.task('default', function() {
   let isSuccess = true
-  const jsWatch = gulp.watch(CONFIG.srcScriptsPath + '/!(_)**/!(_)*.js')
+  const jsWatch = gulp.watch(CONFIG.srcScriptsPath + '/**/*.js')
   const scssWatch = gulp.watch(CONFIG.srcStylesPath + '/**/*.scss')
 
   // js watch.
   jsWatch.on('change', function(event) {
-    const relativePath = path.relative('source/javascript', event.path)
+    const relativePath = path.relative('source/scripts', event.path)
 
-    createScripts(event.path, path.join(CONFIG.destScriptsPath, path.dirname(relativePath)))
+    if (relativePath.search(/\/_/) > -1) {
+      // 表示是以_开头的文件或文件夹.
+      createScripts(CONFIG.srcScriptsPath + '/**/*.js', CONFIG.destScriptsPath, true, event.path)
+    } else {
+      createScripts(event.path, path.join(CONFIG.destScriptsPath, path.dirname(relativePath)), false, '')
+    }
   })
 
   // scss watch.
@@ -93,11 +98,12 @@ function createMd5(content) {
 }
 
 /* scripts任务. */
-function createScripts(srcPath, destPath) {
+function createScripts(srcPath, destPath, isWatching, requireFile) {
   let isSuccess = true
 
   return gulp.src(srcPath)
     .pipe(gulpPlumber())
+    .pipe(nestingModified(isWatching, requireFile))
     .pipe(gulpRequirejsOptimize(function (file) {
       return {
         skipModuleInsertion: true,

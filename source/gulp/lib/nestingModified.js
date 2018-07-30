@@ -1,87 +1,106 @@
-const fs = require('fs')
 const path = require('path')
-  // gulp pipe流里的streamer插件
-  // 主要原理参考了这里 https://github.com/gulpjs/gulp/blob/master/docs/writing-a-plugin/dealing-with-streams.md
-  // nestingModified({
-  //   filepath: file.base + file.relative,
-  //   includeRegex: /require\(\[([^\]]+)\]\)/,
-  //   extractRegex: /['"](.+?)(\.js)?['"]/g,
-  //   suffix: '.js',
-  //   data: file.contents,
-  //   changedFiles: config.changedFiles.js
-  //   },
-  //   function(found) {
-  //     if (found) {
-  //         // make sure the file goes through the next gulp plugin
-  //       _this.push(file);
-  //     }
-  //     // tell the stream engine that we are done with this file
-  //     return callback();
-  //   }
-  // );
-const nestingModified = function (options, fileCheckCallback) {
+const fs = require('fs')
+const through2 = require('through2')
+const fancyLog = require('fancy-log')
+const ansiColors = require('ansi-colors')
+let changedFile = ''
 
-  if (options.data) {
-    run();
+function nestingModified (option, callback) {
+  if (option.data) {
+    run(option, callback)
   } else {
-    fs.readFile(options.filepath, 'utf8',
-    function(error, data) {
-      options.data = data;
-      run();
-    });
-  }
+    fs.readFile(option.filePath, 'utf-8', function (error, data) {
+      option.data = data
 
-  function run() {
-    const directoryPath = path.dirname(options.filepath);
-    const regex = new RegExp(options.extractRegex);
-    let match;
-
-    if (options.includeRegex) {
-      if ((match = new RegExp(options.includeRegex).exec(options.data)) !== null) {
-        options.data = match[1];
-      } else {
-        return fileCheckCallback(false);
-      }
-    }
-
-    function checkNext() {
-      if ((match = regex.exec(options.data)) === null) {
-        return fileCheckCallback(false); // all including files has been checked.
-      }
-
-      const includingFilePath = path.join(directoryPath, match[1] + options.suffix);
-      fs.exists(includingFilePath,
-        function(exists) {
-          if (!exists) { // including file does not exists.
-            return checkNext(); // skip to next
-          }
-
-          for (let i = 0; i < options.changedFiles.length; i++) {
-            if (path.resolve(includingFilePath) == path.resolve(options.changedFiles[i])) { // including file has been modified, -> include it.
-              return fileCheckCallback(true);
-            }
-          }
-          nestingModified({
-            filepath: includingFilePath,
-            includeRegex: options.includeRegex,
-            extractRegex: options.extractRegex,
-            suffix: options.suffix,
-            changedFiles: options.changedFiles
-          },
-          function(hasModified) {
-            if (hasModified) {
-              fileCheckCallback(true);
-            } else {
-              checkNext();
-            }
-          });
-        });
-    };
-
-    checkNext();
+      run(option, callback)
+    })
   }
 }
 
-module.exports = (options, fileCheckCallback) => {
-  nestingModified(options, fileCheckCallback);
+function run (option, callback) {
+  let match = null
+
+  if (option.includeRegex) {
+    match = new RegExp(option.includeRegex).exec(option.data)
+
+    if (match !== null) {
+      option.data = match[1];
+    } else {
+      return callback(false);
+    }
+  }
+
+  checkNext(option, callback)
+}
+
+function checkNext(option, callback) {
+  const regex = new RegExp(option.extractRegex)
+  const directoryPath = path.dirname(option.filePath)
+  let match = regex.exec(option.data)
+  let includingFilePath = ''
+  let matchArr = []
+  
+  while (match !== null) {
+    matchArr.push(match)
+    match = regex.exec(option.data)
+  }
+
+  if (matchArr.length === 0) {
+    return callback(false)
+  }
+
+  matchArr.forEach(function (matchVal) {
+    let tmpPath = path.join(directoryPath, matchVal[1] + option.suffix)
+
+    if (path.resolve(tmpPath) === path.resolve(changedFile)) {
+      includingFilePath = path.join(directoryPath, matchVal[1] + option.suffix)
+    }
+  })
+
+  if (includingFilePath === '') {
+    return callback(false)
+  }
+
+  fs.exists(includingFilePath, function (exists) {
+    if (exists) {
+      if (option.filePath.search(/\/_/) !== -1) {
+        fancyLog(ansiColors.red('请保存 ' + option.filePath))
+        return callback(false)
+      } else {
+        return callback(true)
+      }
+    }
+  })
+}
+
+module.exports = function (isWatching, requireFile) {
+  changedFile = requireFile
+
+  return through2.obj(function (file, enc, callback) {
+    const filePath = file.base + file.relative
+    const _this = this
+
+    if (!isWatching && filePath.search(/\/_/) === -1) {
+      this.push(file)
+
+      return callback()
+    }
+
+    if (isWatching) {
+      nestingModified({
+        filePath: filePath,
+        includeRegex: /require\(\[([^\]]+)\]\)/,
+        extractRegex: /['"](.+?)(\.js)?['"]/g,
+        suffix: '.js',
+        data: file.contents,
+      }, function (found) {
+        if (found) {
+          _this.push(file)
+        }
+
+        return callback()
+      })
+    }
+
+  })
 }

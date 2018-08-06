@@ -6,10 +6,12 @@ const gulpSass = require('gulp-sass')
 const gulpPlumber = require('gulp-plumber')
 const gulpAutoprefixer = require('gulp-autoprefixer')
 const gulpImageMin = require('gulp-imagemin')
+const gulpFilter = require('gulp-filter')
 const runSequence = require('run-sequence')
 const fancyLog = require('fancy-log')
-const removingRequireStatement = require('./source/gulp/lib/removingRequireStatement')
-const nestingModified = require('./source/gulp/lib/nestingModified')
+const webpack = require('webpack')
+const webpackStream = require('webpack-stream')
+const vinylNamed = require('vinyl-named')
 const through2 = require('through2')
 const md5 = require('md5')
 const path = require('path')
@@ -26,7 +28,7 @@ const CONFIG = {
 
 /* 任务 - scripts. */
 gulp.task('scripts', function () {
-  return createScripts(CONFIG.srcScriptsPath + '/!(_)**/!(_)*.js', CONFIG.destScriptsPath, false, '')
+  return createScripts(CONFIG.srcScriptsPath + '/!(_)**/!(_)*.js')
 })
 
 /* 任务 - scss. */
@@ -55,14 +57,23 @@ gulp.task('default', function() {
 
   // js watch.
   jsWatch.on('change', function(event) {
-    const relativePath = path.relative('source/scripts', event.path)
+    let srcFilePath = ''
+    const changeFilePath = event.path
 
-    if (relativePath.search(/\/_/) > -1) {
-      // 表示是以_开头的文件或文件夹.
-      createScripts(CONFIG.srcScriptsPath + '/**/*.js', CONFIG.destScriptsPath, true, event.path)
+    if (changeFilePath.search(/\/_/) > -1) {
+      if (changeFilePath.search(/\/scripts\/common/) > -1) {
+        srcFilePath = CONFIG.srcScriptsPath + '/**/*.js'
+      } else {
+        let relativePath = path.relative(CONFIG.srcScriptsPath, changeFilePath)
+        let basePath = path.resolve(CONFIG.srcScriptsPath, relativePath.split('/')[0])
+
+        srcFilePath = basePath + '/**/*.js'
+      }
     } else {
-      createScripts(event.path, path.join(CONFIG.destScriptsPath, path.dirname(relativePath)), false, '')
+      srcFilePath = changeFilePath
     }
+
+    createScripts(srcFilePath)
   })
 
   // scss watch.
@@ -98,35 +109,26 @@ function createMd5(content) {
 }
 
 /* scripts任务. */
-function createScripts(srcPath, destPath, isWatching, requireFile) {
+function createScripts(srcPath) {
   let isSuccess = true
 
   return gulp.src(srcPath)
     .pipe(gulpPlumber())
-    .pipe(nestingModified(isWatching, requireFile))
-    .pipe(gulpRequirejsOptimize(function (file) {
-      return {
-        skipModuleInsertion: true,
-        skipSemiColonInsertion: true,
-        optimize: 'uglify2',
-        uglify2: {
-          compress: {
-            keep_fargs: true
-          }
-        },
-        generateSourceMaps: false,
-        preserveLicenseComments: false,
-        onBuildWrite: function(id, path, contents) {
-          return contents.replace(/['"]use strict['"];/g, '');
-        }
-      }
+    .pipe(gulpFilter(function (file) {
+      return !/\/_/.test(file.path)
     }))
+    .pipe(vinylNamed(function (file) {
+      let relativePath = path.relative(CONFIG.srcScriptsPath, file.path)
+      return relativePath.slice(0, relativePath.lastIndexOf('.'))
+    }))
+    .pipe(webpackStream({
+      mode: 'development'
+    }, webpack))
     .on('error', function (e) {
       isSuccess = false
       console.log(gulpColor('编译错误: ' + e.error, 'RED'))
     })
-    .pipe(removingRequireStatement())
-    .pipe(gulp.dest(destPath))
+    .pipe(gulp.dest(CONFIG.destScriptsPath))
     .pipe(through2.obj(function (file, enc, callback) {
       const versionHash = createMd5(file.contents)
       const staticPath = path.relative('public', file.path)

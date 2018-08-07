@@ -31,6 +31,7 @@
     "gulp-requirejs-optimize": "^1.3.0",
     "gulp-sass": "^4.0.1",
     "gulp-uglify": "^3.0.0",
+    "gulp-watch": "^5.0.1",
     "md5": "^2.2.1",
     "run-sequence": "^2.2.1",
     "through2": "^2.0.3",

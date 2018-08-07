@@ -7,13 +7,14 @@ const gulpPlumber = require('gulp-plumber')
 const gulpAutoprefixer = require('gulp-autoprefixer')
 const gulpImageMin = require('gulp-imagemin')
 const gulpFilter = require('gulp-filter')
+const gulpMd5Assets = require('gulp-md5-assets')
+const gulpWatch = require('gulp-watch')
 const runSequence = require('run-sequence')
 const fancyLog = require('fancy-log')
 const webpack = require('webpack')
 const webpackStream = require('webpack-stream')
 const vinylNamed = require('vinyl-named')
 const through2 = require('through2')
-const md5 = require('md5')
 const path = require('path')
 
 /* 配置. */
@@ -23,7 +24,8 @@ const CONFIG = {
   srcImagesPath: 'source/images',
   destStylesPath: 'public/static/styles',
   destScriptsPath: 'public/static/scripts',
-  destImagesPath: 'public/images'
+  destImagesPath: 'public/images',
+  viewPath: 'application/views/**/*.phtml'
 }
 
 /* 任务 - scripts. */
@@ -52,11 +54,8 @@ gulp.task('build', function (callback) {
 /* 任务 - default. */
 gulp.task('default', function() {
   let isSuccess = true
-  const jsWatch = gulp.watch(CONFIG.srcScriptsPath + '/**/*.js')
-  const scssWatch = gulp.watch(CONFIG.srcStylesPath + '/**/*.scss')
 
-  // js watch.
-  jsWatch.on('change', function(event) {
+  gulpWatch(CONFIG.srcScriptsPath + '/**/*.js', function (event) {
     let srcFilePath = ''
     const changeFilePath = event.path
 
@@ -76,37 +75,12 @@ gulp.task('default', function() {
     createScripts(srcFilePath)
   })
 
-  // scss watch.
-  scssWatch.on('change', function (event) {
+  gulpWatch(CONFIG.srcStylesPath + '/**/*.scss', function (event) {
     const relativePath = path.relative('source/scss', event.path)
 
     createScss(event.path, path.join(CONFIG.destStylesPath, path.dirname(relativePath)))
   })
 })
-
-/* 写入md5值. */
-function addHash(staticPath, versionHash, ext) {
-  const staticFilePath = staticPath.replace(path.extname(staticPath), ext)
-  const reg = new RegExp(staticFilePath + '.*"')
-
-  gulp.src('application/views/**/*.phtml')
-    .pipe(through2.obj(function (file, enc, cb) {
-      let fileContent = file.contents.toString('utf8')
-
-      if (fileContent.indexOf(staticFilePath) > -1) {
-        fileContent = fileContent.replace(reg, staticFilePath + '?v=' + versionHash + '"')
-        file.contents = new Buffer(fileContent)
-        this.push(file)
-      }
-      cb()
-    }))
-    .pipe(gulp.dest('application/views'))
-}
-
-/* 生成md5值. */
-function createMd5(content) {
-  return md5(content).substr(0, 8)
-}
 
 /* scripts任务. */
 function createScripts(srcPath) {
@@ -122,22 +96,14 @@ function createScripts(srcPath) {
       return relativePath.slice(0, relativePath.lastIndexOf('.'))
     }))
     .pipe(webpackStream({
-      mode: 'development'
+      mode: 'production'
     }, webpack))
     .on('error', function (e) {
       isSuccess = false
       console.log(gulpColor('编译错误: ' + e.error, 'RED'))
     })
     .pipe(gulp.dest(CONFIG.destScriptsPath))
-    .pipe(through2.obj(function (file, enc, callback) {
-      const versionHash = createMd5(file.contents)
-      const staticPath = path.relative('public', file.path)
-
-      addHash(staticPath, versionHash, '.js')
-
-      this.push(file)
-      callback()
-    }))
+    .pipe(gulpMd5Assets(8, CONFIG.viewPath))
     .pipe(through2.obj(function (file, enc, callback) {
       isSuccess && (
         fancyLog(gulpColor('编译成功 ' + path.relative('public', file.path) + ' ✔', 'GREEN'))
@@ -164,15 +130,7 @@ function createScss(srcPath, destPath) {
       autoprefixer: false
     }))
     .pipe(gulp.dest(destPath))
-    .pipe(through2.obj(function (file, enc, callback) {
-      const versionHash = createMd5(file.contents)
-      const staticPath = path.relative('public', file.path)
-
-      addHash(staticPath, versionHash, '.css')
-
-      this.push(file)
-      callback()
-    }))
+    .pipe(gulpMd5Assets(8, CONFIG.viewPath))
     .pipe(through2.obj(function (file, enc, callback) {
       fancyLog(gulpColor('编译成功 ' + path.relative('public', file.path) + ' ✔', 'GREEN'))
 

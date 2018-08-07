@@ -24,8 +24,8 @@ const CONFIG = {
   srcImagesPath: 'source/images',
   destStylesPath: 'public/static/styles',
   destScriptsPath: 'public/static/scripts',
-  destImagesPath: 'public/images',
-  viewPath: 'application/views/**/*.phtml'
+  destImagesPath: 'public/static/images',
+  viewPath: 'application/views/**/*.html'
 }
 
 /* 任务 - scripts. */
@@ -96,6 +96,19 @@ function createScripts(srcPath) {
       return relativePath.slice(0, relativePath.lastIndexOf('.'))
     }))
     .pipe(webpackStream({
+      module: {
+        rules: [{
+          test: /\.js$/,
+          exclude: /node_modules/,
+          use: {
+            loader: 'babel-loader',
+            options: {
+              presets: ['babel-preset-env'],
+              cacheDirectory: true
+            }
+          }
+        }]
+      },
       mode: 'production'
     }, webpack))
     .on('error', function (e) {

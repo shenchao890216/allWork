@@ -40,7 +40,6 @@ gulp.task('scss', function () {
 
 /* 任务 - images. */
 gulp.task('images', function () {
-  // pass.
   return gulp.src(CONFIG.srcImagesPath + '/**/*')
     .pipe(gulpImageMin())
     .pipe(gulp.dest(CONFIG.destImagesPath))
@@ -79,6 +78,12 @@ gulp.task('default', function() {
     const relativePath = path.relative('source/scss', event.path)
 
     createScss(event.path, path.join(CONFIG.destStylesPath, path.dirname(relativePath)))
+  })
+
+  gulpWatch(CONFIG.srcImagesPath + '/**/*', function () {
+    return gulp.src(CONFIG.srcImagesPath + '/**/*')
+      .pipe(gulpImageMin())
+      .pipe(gulp.dest(CONFIG.destImagesPath))
   })
 })
 

@@ -101,6 +101,7 @@ function createScripts(srcPath) {
       return relativePath.slice(0, relativePath.lastIndexOf('.'))
     }))
     .pipe(webpackStream({
+      devtool: (process.env.NODE_ENV === 'production') ? 'hidden-source-map' : 'cheap-module-eval-source-map',
       module: {
         rules: [{
           test: /\.js$/,
@@ -114,7 +115,10 @@ function createScripts(srcPath) {
           }
         }]
       },
-      mode: 'production'
+      mode: process.env.NODE_ENV,
+      externals: {
+        jquery: 'window.jQuery'
+      },
     }, webpack))
     .on('error', function (e) {
       isSuccess = false

@@ -10,10 +10,6 @@
     "dev": "cross-env NODE_ENV=development gulp",
     "release": "cross-env NODE_ENV=production gulp"
   },
-  "repository": {
-    "type": "git",
-    "url": "git@code.aliyun.com:zy/btc_jubi_c2c.git"
-  },
   "keywords": [],
   "author": "",
   "license": "ISC",

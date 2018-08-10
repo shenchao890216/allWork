@@ -26,6 +26,7 @@ const CONFIG = {
   destScriptsPath: 'public/static/scripts',
   destImagesPath: 'public/static/images',
   viewPath: 'application/views/**/*.html'
+  // viewPath: 'application/views/**/*.phtml'
 }
 
 /* 任务 - scripts. */

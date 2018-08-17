@@ -9,6 +9,7 @@ const gulpImageMin = require('gulp-imagemin')
 const gulpFilter = require('gulp-filter')
 const gulpMd5Assets = require('gulp-md5-assets')
 const gulpWatch = require('gulp-watch')
+const gulpUglify = require('gulp-uglify')
 const runSequence = require('run-sequence')
 const fancyLog = require('fancy-log')
 const webpack = require('webpack')
@@ -25,13 +26,37 @@ const CONFIG = {
   destStylesPath: 'public/static/styles',
   destScriptsPath: 'public/static/scripts',
   destImagesPath: 'public/static/images',
-  viewPath: 'application/views/**/*.html'
-  // viewPath: 'application/views/**/*.phtml'
+  viewPath: 'application/views/**/*.phtml'
 }
 
 /* 任务 - scripts. */
 gulp.task('scripts', function () {
   return createScripts(CONFIG.srcScriptsPath + '/!(_)**/!(_)*.js')
+})
+
+/* 任务 - scripts(lib|plugin) */
+gulp.task('scripts-lp', function () {
+  let isSuccess = true
+
+  return gulp.src(CONFIG.srcScriptsPath + '/*(lib|plugin)/**/*.js')
+    .pipe(gulpPlumber())
+    .pipe(gulpFilter(function (file) {
+      return !/\/_/.test(file.path)
+    }))
+    .pipe(gulpUglify())
+    .on('error', function (e) {
+      isSuccess = false
+      console.log(gulpColor('编译错误: ' + e.error, 'RED'))
+    })
+    .pipe(gulp.dest(CONFIG.destScriptsPath))
+    .pipe(gulpMd5Assets(8, CONFIG.viewPath))
+    .pipe(through2.obj(function (file, enc, callback) {
+      isSuccess && (
+        fancyLog(gulpColor('编译成功 ' + path.relative('public', file.path) + ' ✔', 'GREEN'))
+      )
+
+      callback()
+    }))
 })
 
 /* 任务 - scss. */
@@ -48,16 +73,41 @@ gulp.task('images', function () {
 
 /* 任务 - build. */
 gulp.task('build', function (callback) {
-  runSequence('scripts', 'scss', 'images', callback)
+  runSequence('scripts-lp', 'scripts', 'scss', 'images', callback)
 })
 
 /* 任务 - default. */
 gulp.task('default', function() {
   let isSuccess = true
 
-  gulpWatch(CONFIG.srcScriptsPath + '/**/*.js', function (event) {
+  gulpWatch(CONFIG.srcScriptsPath + '/(lib|plugin)/**/*.js')
+    .pipe(gulpPlumber())
+    .pipe(gulpFilter(function (file) {
+      return !/\/_/.test(file.path)
+    }))
+    .pipe(gulpUglify())
+    .on('error', function (e) {
+      isSuccess = false
+      console.log(gulpColor('编译错误: ' + e.error, 'RED'))
+    })
+    .pipe(gulp.dest(CONFIG.destScriptsPath))
+    .pipe(gulpMd5Assets(8, CONFIG.viewPath))
+    .pipe(through2.obj(function (file, enc, callback) {
+      isSuccess && (
+        fancyLog(gulpColor('编译成功 ' + path.relative('public', file.path) + ' ✔', 'GREEN'))
+      )
+
+      callback()
+    }))
+
+  gulpWatch([CONFIG.srcScriptsPath + '/**/*.js', '!' + CONFIG.srcScriptsPath + '/(lib|plugin)/**/*.js'], function (event) {
     let srcFilePath = ''
     const changeFilePath = event.path
+
+    if (changeFilePath.search(/\/lib/) > -1 || changeFilePath.search(/\/plugin/) > -1) {
+      createLp(changeFilePath)
+      return
+    }
 
     if (changeFilePath.search(/\/_/) > -1) {
       if (changeFilePath.search(/\/scripts\/common/) > -1) {
